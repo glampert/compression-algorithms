@@ -13,6 +13,9 @@
 // c++ -std=c++11 -O3 -Wall -Wextra -Weffc++ -Wshadow -pedantic tests.cpp -o tests
 // ================================================================================================
 
+#define RLE_IMPLEMENTATION
+#include "rle.hpp"
+
 #define HUFFMAN_IMPLEMENTATION
 #include "huffman.hpp"
 
@@ -85,10 +88,10 @@ static const std::uint8_t str2[] = "Hello Dr. Chandra, my name is HAL-9000. I'm 
 static const std::uint8_t str3[] = "\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11";
 
 // ========================================================
-// Huffman encoding/decoding test:
+// Huffman encoding/decoding tests:
 // ========================================================
 
-static void Test_HuffmanEncodeDecode(const huffman::UByte * sampleData, const int sampleSize)
+static void Test_Huffman_EncodeDecode(const huffman::UByte * sampleData, const int sampleSize)
 {
     int compressedSizeBytes = 0;
     int compressedSizeBits  = 0;
@@ -96,16 +99,15 @@ static void Test_HuffmanEncodeDecode(const huffman::UByte * sampleData, const in
     std::vector<huffman::UByte> uncompressedBuffer(sampleSize, 0);
 
     // Compress:
-    huffman::easyCompress(sampleData, sampleSize, &compressedData,
-                          &compressedSizeBytes, &compressedSizeBits);
+    huffman::easyEncode(sampleData, sampleSize, &compressedData,
+                        &compressedSizeBytes, &compressedSizeBits);
 
-    std::cout << "Huffman compressed size bits    = " << compressedSizeBits  << "\n";
     std::cout << "Huffman compressed size bytes   = " << compressedSizeBytes << "\n";
-    std::cout << "Huffman uncompressed size bytes = " << sampleSize          << "\n";
+    std::cout << "Huffman uncompressed size bytes = " << sampleSize << "\n";
 
     // Restore:
-    huffman::easyDecompress(compressedData, compressedSizeBytes, compressedSizeBits,
-                            uncompressedBuffer.data(), uncompressedBuffer.size());
+    huffman::easyDecode(compressedData, compressedSizeBytes, compressedSizeBits,
+                        uncompressedBuffer.data(), uncompressedBuffer.size());
 
     // Validate:
     if (std::memcmp(uncompressedBuffer.data(), sampleData, sampleSize) != 0)
@@ -117,23 +119,73 @@ static void Test_HuffmanEncodeDecode(const huffman::UByte * sampleData, const in
         std::cout << "Huffman compression successful!\n";
     }
 
-    // easyCompress() uses HUFFMAN_MALLOC (std::malloc).
+    // easyEncode() uses HUFFMAN_MALLOC (std::malloc).
     HUFFMAN_MFREE(compressedData);
 }
 
 static void Test_Huffman()
 {
     std::cout << "> Testing random512...\n";
-    Test_HuffmanEncodeDecode(random512, sizeof(random512));
+    Test_Huffman_EncodeDecode(random512, sizeof(random512));
 
     std::cout << "> Testing strings...\n";
-    Test_HuffmanEncodeDecode(str0, sizeof(str0));
-    Test_HuffmanEncodeDecode(str1, sizeof(str1));
-    Test_HuffmanEncodeDecode(str2, sizeof(str2));
-    Test_HuffmanEncodeDecode(str3, sizeof(str3));
+    Test_Huffman_EncodeDecode(str0, sizeof(str0));
+    Test_Huffman_EncodeDecode(str1, sizeof(str1));
+    Test_Huffman_EncodeDecode(str2, sizeof(str2));
+    Test_Huffman_EncodeDecode(str3, sizeof(str3));
 
     std::cout << "> Testing lenna.tga...\n";
-    Test_HuffmanEncodeDecode(lennaTgaData, sizeof(lennaTgaData));
+    Test_Huffman_EncodeDecode(lennaTgaData, sizeof(lennaTgaData));
+}
+
+// ========================================================
+// Run Length Encoding tests:
+// ========================================================
+
+static void Test_RLE_EncodeDecode(const rle::UByte * sampleData, const int sampleSize)
+{
+    std::vector<rle::UByte> compressedBuffer(sampleSize * 4, 0); // RLE might make things bigger.
+    std::vector<rle::UByte> uncompressedBuffer(sampleSize, 0);
+
+    // Compress:
+    const int compressedSize = rle::easyEncode(sampleData, sampleSize,
+                    compressedBuffer.data(), compressedBuffer.size());
+
+    std::cout << "RLE compressed size bytes   = " << compressedSize << "\n";
+    std::cout << "RLE uncompressed size bytes = " << sampleSize << "\n";
+
+    // Restore:
+    const int uncompressedSize = rle::easyDecode(compressedBuffer.data(), compressedSize,
+                                   uncompressedBuffer.data(), uncompressedBuffer.size());
+
+    // Validate:
+    if (uncompressedSize != sampleSize)
+    {
+        std::cerr << "RLE COMPRESSION ERROR! Size mismatch!\n";
+        return;
+    }
+    if (std::memcmp(uncompressedBuffer.data(), sampleData, sampleSize) != 0)
+    {
+        std::cerr << "RLE COMPRESSION ERROR! Data corrupted!\n";
+        return;
+    }
+
+    std::cout << "RLE compression successful!\n";
+}
+
+static void Test_RLE()
+{
+    std::cout << "> Testing random512...\n";
+    Test_RLE_EncodeDecode(random512, sizeof(random512));
+
+    std::cout << "> Testing strings...\n";
+    Test_RLE_EncodeDecode(str0, sizeof(str0));
+    Test_RLE_EncodeDecode(str1, sizeof(str1));
+    Test_RLE_EncodeDecode(str2, sizeof(str2));
+    Test_RLE_EncodeDecode(str3, sizeof(str3));
+
+    std::cout << "> Testing lenna.tga...\n";
+    Test_RLE_EncodeDecode(lennaTgaData, sizeof(lennaTgaData));
 }
 
 // ========================================================
@@ -145,11 +197,12 @@ static void Test_Huffman()
     {                                              \
         std::cout << ">>> Test " << #func << "\n"; \
         Test_##func();                             \
+        std::cout << std::endl;                    \
     } while (0)
 
 int main()
 {
     std::cout << "\nRunning unit tests for the compression algorithms...\n\n";
+    TEST(RLE);
     TEST(Huffman);
-    std::cout << std::endl;
 }

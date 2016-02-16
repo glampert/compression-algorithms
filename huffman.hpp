@@ -49,7 +49,7 @@
 // all the Huffman related work, the rest is just support
 // code for bit streams and integer bit manipulation.
 //
-// easyCompress()/easyDecompress() functions are provided
+// easyEncode()/easyDecode() functions are provided
 // for quick-n'-easy compression/decompression of raw data
 // buffers.
 //
@@ -421,21 +421,21 @@ private:
 };
 
 // ========================================================
-// easyCompress() / easyDecompress():
+// easyEncode() / easyDecode():
 // ========================================================
 
 // Quick Huffman data compression.
 // Output compressed data is heap allocated with HUFFMAN_MALLOC()
 // and should be later freed with HUFFMAN_MFREE().
-void easyCompress(const UByte * uncompressed, int uncompressedSizeBytes,
-                  UByte ** compressed, int * compressedSizeBytes, int * compressedSizeBits);
+void easyEncode(const UByte * uncompressed, int uncompressedSizeBytes,
+                UByte ** compressed, int * compressedSizeBytes, int * compressedSizeBits);
 
-// Decompress back the output of easyCompress().
+// Decompress back the output of easyEncode().
 // The uncompressed output buffer is assumed to be big enough to hold the uncompressed data,
 // if it happens to be smaller, the decoder will return a partial output and the return value
 // of this function will be less than uncompressedSizeBytes.
-int easyDecompress(const UByte * compressed, int compressedSizeBytes, int compressedSizeBits,
-                   UByte * uncompressed, int uncompressedSizeBytes);
+int easyDecode(const UByte * compressed, int compressedSizeBytes, int compressedSizeBits,
+               UByte * uncompressed, int uncompressedSizeBytes);
 
 } // namespace huffman {}
 
@@ -1114,24 +1114,21 @@ int Decoder::decode(UByte * data, const int dataSizeBytes)
 }
 
 // ========================================================
-// easyCompress() implementation:
+// easyEncode() implementation:
 // ========================================================
 
-void easyCompress(const UByte * uncompressed,
-                  const int uncompressedSizeBytes,
-                  UByte ** compressed,
-                  int * compressedSizeBytes,
-                  int * compressedSizeBits)
+void easyEncode(const UByte * uncompressed, const int uncompressedSizeBytes,
+                UByte ** compressed, int * compressedSizeBytes, int * compressedSizeBits)
 {
     if (uncompressed == nullptr || compressed == nullptr)
     {
-        HUFFMAN_ERROR("huffman::easyCompress(): Null data pointer(s)!");
+        HUFFMAN_ERROR("huffman::easyEncode(): Null data pointer(s)!");
         return;
     }
 
     if (uncompressedSizeBytes <= 0 || compressedSizeBytes == nullptr || compressedSizeBits == nullptr)
     {
-        HUFFMAN_ERROR("huffman::easyCompress(): Bad in/out sizes!");
+        HUFFMAN_ERROR("huffman::easyEncode(): Bad in/out sizes!");
         return;
     }
 
@@ -1145,24 +1142,21 @@ void easyCompress(const UByte * uncompressed,
 }
 
 // ========================================================
-// easyDecompress() implementation:
+// easyDecode() implementation:
 // ========================================================
 
-int easyDecompress(const UByte * compressed,
-                   const int compressedSizeBytes,
-                   const int compressedSizeBits,
-                   UByte * uncompressed,
-                   const int uncompressedSizeBytes)
+int easyDecode(const UByte * compressed, const int compressedSizeBytes, const int compressedSizeBits,
+               UByte * uncompressed, const int uncompressedSizeBytes)
 {
     if (compressed == nullptr || uncompressed == nullptr)
     {
-        HUFFMAN_ERROR("huffman::easyDecompress(): Null data pointer(s)!");
+        HUFFMAN_ERROR("huffman::easyDecode(): Null data pointer(s)!");
         return 0;
     }
 
     if (compressedSizeBytes <= 0 || compressedSizeBits <= 0 || uncompressedSizeBytes <= 0)
     {
-        HUFFMAN_ERROR("huffman::easyDecompress(): Bad in/out sizes!");
+        HUFFMAN_ERROR("huffman::easyDecode(): Bad in/out sizes!");
         return 0;
     }
 
