@@ -10,5 +10,6 @@ express or implied. No attribution is required, but a mention about the author i
 
 ----
 
+- `rle.hpp`: [Run Length Encoding](https://en.wikipedia.org/wiki/Run-length_encoding) with either 8 or 16 bits run-length words.
 - `huffman.hpp`: Simple [Huffman Coding](https://en.wikipedia.org/wiki/Huffman_coding) with 64-bits max code length.
 
