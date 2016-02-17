@@ -132,8 +132,7 @@ using UInt16 = std::uint16_t;
 using UInt32 = std::uint32_t;
 using UInt64 = std::uint64_t;
 
-int nextPowerOfTwo(int num);
-int bitsForInteger(int num);
+// Default error handler for HUFFMAN_ERROR().
 void fatalError(const char * message);
 
 // ========================================================
@@ -186,7 +185,7 @@ public:
         return !!(bits & mask);
     }
 
-    std::string toBitString() const
+    std::string toBitString() const // Useful for debugging.
     {
         std::string bitString;
         for (int b = 0; b < getLength(); ++b)
@@ -199,8 +198,8 @@ public:
     int getLength() const { return length; }
     void setLength(const int lenInBits) { length = lenInBits; }
 
-    UInt64 getLongWord() const { return bits; }
-    void setLongWord(const UInt64 lWord) { bits = lWord; }
+    UInt64 getAsU64() const { return bits; }
+    void setAsU64(const UInt64 num) { bits = num; }
 
     bool operator == (const Code other) const { return bits == other.bits && length == other.length; }
     bool operator != (const Code other) const { return !(*this == other); }
@@ -228,11 +227,11 @@ public:
 
     void allocate(int bitsWanted);
     void setGranularity(int growthGranularity);
-    std::string toBitString() const;
+    std::string toBitString() const; // Useful for debugging.
     UByte * release();
 
     void appendBit(bool bit);
-    void appendBitsLWord(UInt64 lWord, int bitCount);
+    void appendBitsU64(UInt64 num, int bitCount);
     void appendBitString(const std::string & bitStr);
     void appendCode(Code code);
 
@@ -252,7 +251,7 @@ private:
     int granularity;    // Amount bytesAllocated multiplies by when auto-resizing in appendBit().
     int currBytePos;    // Current byte being written to, from 0 to bytesAllocated-1.
     int nextBitPos;     // Bit position within the current byte to access next. 0 to 7.
-    int totalBits;      // Number of bits in use from the stream buffer, not including byte-rounding padding.
+    int numBitsWritten; // Number of bits in use from the stream buffer, not including byte-rounding padding.
 };
 
 // ========================================================
@@ -272,7 +271,7 @@ public:
 
     void reset();
     bool readNextBit();
-    UInt64 readBitsLWord(int bitCount);
+    UInt64 readBitsU64(int bitCount);
 
     // Basic stream info:
     int getByteCount() const { return sizeInBytes; }
@@ -291,7 +290,7 @@ private:
     const int sizeInBits;  // Size of the stream *in bits*, padding *not* include.
     int currBytePos;       // Current byte being read in the stream.
     int nextBitPos;        // Bit position within the current byte to access next. 0 to 7.
-    int totalBits;         // Total bits read from the stream so far. Never includes byte-rounding padding.
+    int numBitsRead;       // Total bits read from the stream so far. Never includes byte-rounding padding.
     Code currCode;         // Current Huffman code being built from the input bit stream.
 };
 
@@ -337,7 +336,7 @@ public:
     const Node * findNodeForCode(Code code) const;
 
     // Get the bit stream generated from the data.
-    // The stream will be prefixed with the Huffman tree
+    // The stream will be prefixed with the Huffman tree codes
     // if prependTreeToBitStream was set in the constructor.
     const BitStreamWriter & getBitStreamWriter() const;
     BitStreamWriter & getBitStreamWriter();
@@ -463,7 +462,7 @@ namespace huffman
 // ========================================================
 
 // Round up to the next power-of-two number, e.g. 37 => 64
-int nextPowerOfTwo(int num)
+static int nextPowerOfTwo(int num)
 {
     --num;
     for (std::size_t i = 1; i < sizeof(num) * 8; i <<= 1)
@@ -475,7 +474,7 @@ int nextPowerOfTwo(int num)
 
 // Count the minimum number of bits required to
 // represent the integer 'num', AKA its log2.
-int bitsForInteger(int num)
+static int bitsForInteger(int num)
 {
     int bits = 0;
     while (num > 0)
@@ -502,10 +501,10 @@ void fatalError(const char * message)
 
 BitStreamWriter::BitStreamWriter()
 {
-    // 4096 bits for a start. It will resize if needed.
+    // 8192 bits for a start (1024 bytes). It will resize if needed.
     // Default granularity is 2.
     internalInit();
-    allocate(4096);
+    allocate(8192);
 }
 
 BitStreamWriter::BitStreamWriter(const int initialSizeInBits, const int growthGranularity)
@@ -530,7 +529,7 @@ void BitStreamWriter::internalInit()
     granularity    = 2;
     currBytePos    = 0;
     nextBitPos     = 0;
-    totalBits      = 0;
+    numBitsWritten = 0;
 }
 
 void BitStreamWriter::allocate(int bitsWanted)
@@ -562,7 +561,7 @@ void BitStreamWriter::appendBit(const bool bit)
 {
     const UInt32 mask = UInt32(1) << nextBitPos;
     stream[currBytePos] = (stream[currBytePos] & ~mask) | (-bit & mask);
-    ++totalBits;
+    ++numBitsWritten;
 
     if (++nextBitPos == 8)
     {
@@ -574,12 +573,13 @@ void BitStreamWriter::appendBit(const bool bit)
     }
 }
 
-void BitStreamWriter::appendBitsLWord(const UInt64 lWord, const int bitCount)
+void BitStreamWriter::appendBitsU64(const UInt64 num, const int bitCount)
 {
+    assert(bitCount <= 64);
     for (int b = 0; b < bitCount; ++b)
     {
         const UInt64 mask = UInt64(1) << b;
-        const bool bit = !!(lWord & mask);
+        const bool bit = !!(num & mask);
         appendBit(bit);
     }
 }
@@ -604,8 +604,8 @@ std::string BitStreamWriter::toBitString() const
 {
     std::string bitString;
 
-    int usedBytes = totalBits / 8;
-    int leftovers = totalBits % 8;
+    int usedBytes = numBitsWritten / 8;
+    int leftovers = numBitsWritten % 8;
     if (leftovers != 0)
     {
         ++usedBytes;
@@ -638,8 +638,8 @@ void BitStreamWriter::setGranularity(const int growthGranularity)
 
 int BitStreamWriter::getByteCount() const
 {
-    int usedBytes = totalBits / 8;
-    int leftovers = totalBits % 8;
+    int usedBytes = numBitsWritten / 8;
+    int leftovers = numBitsWritten % 8;
     if (leftovers != 0)
     {
         ++usedBytes;
@@ -650,7 +650,7 @@ int BitStreamWriter::getByteCount() const
 
 int BitStreamWriter::getBitCount() const
 {
-    return totalBits;
+    return numBitsWritten;
 }
 
 const UByte * BitStreamWriter::getBitStream() const
@@ -694,14 +694,14 @@ BitStreamReader::BitStreamReader(const UByte * bitStream, const int byteCount, c
 
 bool BitStreamReader::readNextBit()
 {
-    if (totalBits >= sizeInBits)
+    if (numBitsRead >= sizeInBits)
     {
         return false; // We are done.
     }
 
     const UInt32 mask = UInt32(1) << nextBitPos;
     const bool bit = !!(stream[currBytePos] & mask);
-    ++totalBits;
+    ++numBitsRead;
 
     if (++nextBitPos == 8)
     {
@@ -713,8 +713,10 @@ bool BitStreamReader::readNextBit()
     return true;
 }
 
-UInt64 BitStreamReader::readBitsLWord(const int bitCount)
+UInt64 BitStreamReader::readBitsU64(const int bitCount)
 {
+    assert(bitCount <= 64);
+
     // We can reuse the Code reading infrastructure for this.
     // This is arguably a little hackish, but gets the job done...
     currCode.clear();
@@ -726,14 +728,14 @@ UInt64 BitStreamReader::readBitsLWord(const int bitCount)
             break;
         }
     }
-    return currCode.getLongWord();
+    return currCode.getAsU64();
 }
 
 void BitStreamReader::reset()
 {
     currBytePos = 0;
     nextBitPos  = 0;
-    totalBits   = 0;
+    numBitsRead = 0;
     currCode.clear();
 }
 
@@ -918,8 +920,8 @@ void Encoder::writeTreeBitStream()
     // Write the counts:
     const int numberOfCodes   = MaxSymbols;
     const int codeLengthWidth = bitsForInteger(maxCodeLengthInBits);
-    bitStream.appendBitsLWord(numberOfCodes,   16);
-    bitStream.appendBitsLWord(codeLengthWidth, 16);
+    bitStream.appendBitsU64(numberOfCodes,   16);
+    bitStream.appendBitsU64(codeLengthWidth, 16);
     treePrefixBits = 32; // 16 bits each.
 
     // Output the 256 nodes, in order:
@@ -927,11 +929,11 @@ void Encoder::writeTreeBitStream()
     {
         // Write the length of the code using a fixed bit-width:
         const int codeLen = nodes[s].code.getLength();
-        bitStream.appendBitsLWord(codeLen, codeLengthWidth);
+        bitStream.appendBitsU64(codeLen, codeLengthWidth);
 
         // Write the code bits themselves, using a varying bit-width:
-        const UInt64 codeLWord = nodes[s].code.getLongWord();
-        bitStream.appendBitsLWord(codeLWord, codeLen);
+        const UInt64 codeNum = nodes[s].code.getAsU64();
+        bitStream.appendBitsU64(codeNum, codeLen);
 
         // Keep track of the number of bits written so far for later padding.
         treePrefixBits += (codeLengthWidth + codeLen);
@@ -1014,8 +1016,8 @@ void Decoder::readPrefixData()
     // First two 16-bits words in the stream are
     // the number of codes, which must be 256, and
     // the width in bits of each code_length field.
-    const UInt64 numberOfCodes   = bitStream.readBitsLWord(16);
-    const UInt64 codeLengthWidth = bitStream.readBitsLWord(16);
+    const UInt64 numberOfCodes   = bitStream.readBitsU64(16);
+    const UInt64 codeLengthWidth = bitStream.readBitsU64(16);
     int treePrefixBits = 32; // The 16 bits read above.
 
     if (numberOfCodes != MaxSymbols)
@@ -1040,7 +1042,7 @@ void Decoder::readPrefixData()
             }
         }
         treePrefixBits += codeLengthWidth;
-        const UInt64 codeBitsWidth = bitStream.getCode().getLongWord();
+        const UInt64 codeBitsWidth = bitStream.getCode().getAsU64();
         assert(codeBitsWidth <= Code::MaxBits);
 
         //
@@ -1138,7 +1140,7 @@ void easyEncode(const UByte * uncompressed, const int uncompressedSizeBytes,
     // Pass ownership of the compressed data buffer to the user pointer:
     *compressedSizeBytes = bitStream.getByteCount();
     *compressedSizeBits  = bitStream.getBitCount();
-    *compressed = bitStream.release();
+    *compressed          = bitStream.release();
 }
 
 // ========================================================

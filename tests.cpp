@@ -25,7 +25,7 @@
 #include <vector>
 
 // ========================================================
-// Test data:
+// Test sample data:
 // ========================================================
 
 // A binary dump of "lenna.tga", the classic Computer Graphics
@@ -88,6 +88,56 @@ static const std::uint8_t str2[] = "Hello Dr. Chandra, my name is HAL-9000. I'm 
 static const std::uint8_t str3[] = "\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11\x11";
 
 // ========================================================
+// Run Length Encoding (RLE) tests:
+// ========================================================
+
+static void Test_RLE_EncodeDecode(const rle::UByte * sampleData, const int sampleSize)
+{
+    std::vector<rle::UByte> compressedBuffer(sampleSize * 4, 0); // RLE might make things bigger.
+    std::vector<rle::UByte> uncompressedBuffer(sampleSize, 0);
+
+    // Compress:
+    const int compressedSize = rle::easyEncode(sampleData, sampleSize,
+                    compressedBuffer.data(), compressedBuffer.size());
+
+    std::cout << "RLE compressed size bytes   = " << compressedSize << "\n";
+    std::cout << "RLE uncompressed size bytes = " << sampleSize << "\n";
+
+    // Restore:
+    const int uncompressedSize = rle::easyDecode(compressedBuffer.data(), compressedSize,
+                                   uncompressedBuffer.data(), uncompressedBuffer.size());
+
+    // Validate:
+    if (uncompressedSize != sampleSize)
+    {
+        std::cerr << "RLE COMPRESSION ERROR! Size mismatch!\n";
+        return;
+    }
+    if (std::memcmp(uncompressedBuffer.data(), sampleData, sampleSize) != 0)
+    {
+        std::cerr << "RLE COMPRESSION ERROR! Data corrupted!\n";
+        return;
+    }
+
+    std::cout << "RLE compression successful!\n";
+}
+
+static void Test_RLE()
+{
+    std::cout << "> Testing random512...\n";
+    Test_RLE_EncodeDecode(random512, sizeof(random512));
+
+    std::cout << "> Testing strings...\n";
+    Test_RLE_EncodeDecode(str0, sizeof(str0));
+    Test_RLE_EncodeDecode(str1, sizeof(str1));
+    Test_RLE_EncodeDecode(str2, sizeof(str2));
+    Test_RLE_EncodeDecode(str3, sizeof(str3));
+
+    std::cout << "> Testing lenna.tga...\n";
+    Test_RLE_EncodeDecode(lennaTgaData, sizeof(lennaTgaData));
+}
+
+// ========================================================
 // Huffman encoding/decoding tests:
 // ========================================================
 
@@ -136,56 +186,6 @@ static void Test_Huffman()
 
     std::cout << "> Testing lenna.tga...\n";
     Test_Huffman_EncodeDecode(lennaTgaData, sizeof(lennaTgaData));
-}
-
-// ========================================================
-// Run Length Encoding tests:
-// ========================================================
-
-static void Test_RLE_EncodeDecode(const rle::UByte * sampleData, const int sampleSize)
-{
-    std::vector<rle::UByte> compressedBuffer(sampleSize * 4, 0); // RLE might make things bigger.
-    std::vector<rle::UByte> uncompressedBuffer(sampleSize, 0);
-
-    // Compress:
-    const int compressedSize = rle::easyEncode(sampleData, sampleSize,
-                    compressedBuffer.data(), compressedBuffer.size());
-
-    std::cout << "RLE compressed size bytes   = " << compressedSize << "\n";
-    std::cout << "RLE uncompressed size bytes = " << sampleSize << "\n";
-
-    // Restore:
-    const int uncompressedSize = rle::easyDecode(compressedBuffer.data(), compressedSize,
-                                   uncompressedBuffer.data(), uncompressedBuffer.size());
-
-    // Validate:
-    if (uncompressedSize != sampleSize)
-    {
-        std::cerr << "RLE COMPRESSION ERROR! Size mismatch!\n";
-        return;
-    }
-    if (std::memcmp(uncompressedBuffer.data(), sampleData, sampleSize) != 0)
-    {
-        std::cerr << "RLE COMPRESSION ERROR! Data corrupted!\n";
-        return;
-    }
-
-    std::cout << "RLE compression successful!\n";
-}
-
-static void Test_RLE()
-{
-    std::cout << "> Testing random512...\n";
-    Test_RLE_EncodeDecode(random512, sizeof(random512));
-
-    std::cout << "> Testing strings...\n";
-    Test_RLE_EncodeDecode(str0, sizeof(str0));
-    Test_RLE_EncodeDecode(str1, sizeof(str1));
-    Test_RLE_EncodeDecode(str2, sizeof(str2));
-    Test_RLE_EncodeDecode(str3, sizeof(str3));
-
-    std::cout << "> Testing lenna.tga...\n";
-    Test_RLE_EncodeDecode(lennaTgaData, sizeof(lennaTgaData));
 }
 
 // ========================================================
