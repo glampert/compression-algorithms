@@ -16,6 +16,9 @@
 #define RLE_IMPLEMENTATION
 #include "rle.hpp"
 
+#define LZW_IMPLEMENTATION
+#include "lzw.hpp"
+
 #define HUFFMAN_IMPLEMENTATION
 #include "huffman.hpp"
 
@@ -23,6 +26,7 @@
 #include <cstring>
 #include <iostream>
 #include <vector>
+#include <chrono>
 
 // ========================================================
 // Test sample data:
@@ -98,28 +102,35 @@ static void Test_RLE_EncodeDecode(const rle::UByte * sampleData, const int sampl
 
     // Compress:
     const int compressedSize = rle::easyEncode(sampleData, sampleSize,
-                    compressedBuffer.data(), compressedBuffer.size());
+                                               compressedBuffer.data(),
+                                               compressedBuffer.size());
 
     std::cout << "RLE compressed size bytes   = " << compressedSize << "\n";
     std::cout << "RLE uncompressed size bytes = " << sampleSize << "\n";
 
     // Restore:
     const int uncompressedSize = rle::easyDecode(compressedBuffer.data(), compressedSize,
-                                   uncompressedBuffer.data(), uncompressedBuffer.size());
+                                                 uncompressedBuffer.data(), uncompressedBuffer.size());
 
     // Validate:
+    bool successful = true;
     if (uncompressedSize != sampleSize)
     {
         std::cerr << "RLE COMPRESSION ERROR! Size mismatch!\n";
-        return;
+        successful = false;
     }
     if (std::memcmp(uncompressedBuffer.data(), sampleData, sampleSize) != 0)
     {
         std::cerr << "RLE COMPRESSION ERROR! Data corrupted!\n";
-        return;
+        successful = false;
     }
 
-    std::cout << "RLE compression successful!\n";
+    if (successful)
+    {
+        std::cout << "RLE compression successful!\n";
+    }
+    // No additional memory is allocated by the RLE encoder/decoder.
+    // You have to provide big buffers.
 }
 
 static void Test_RLE()
@@ -135,6 +146,65 @@ static void Test_RLE()
 
     std::cout << "> Testing lenna.tga...\n";
     Test_RLE_EncodeDecode(lennaTgaData, sizeof(lennaTgaData));
+}
+
+// ========================================================
+// LZW encoding/decoding tests:
+// ========================================================
+
+static void Test_LZW_EncodeDecode(const lzw::UByte * sampleData, const int sampleSize)
+{
+    int compressedSizeBytes = 0;
+    int compressedSizeBits  = 0;
+    lzw::UByte * compressedData = nullptr;
+    std::vector<lzw::UByte> uncompressedBuffer(sampleSize, 0);
+
+    // Compress:
+    lzw::easyEncode(sampleData, sampleSize, &compressedData,
+                    &compressedSizeBytes, &compressedSizeBits);
+
+    std::cout << "LZW compressed size bytes   = " << compressedSizeBytes << "\n";
+    std::cout << "LZW uncompressed size bytes = " << sampleSize << "\n";
+
+    // Restore:
+    const int uncompressedSize = lzw::easyDecode(compressedData, compressedSizeBytes, compressedSizeBits,
+                                                 uncompressedBuffer.data(), uncompressedBuffer.size());
+
+    // Validate:
+    bool successful = true;
+    if (uncompressedSize != sampleSize)
+    {
+        std::cerr << "LZW COMPRESSION ERROR! Size mismatch!\n";
+        successful = false;
+    }
+    if (std::memcmp(uncompressedBuffer.data(), sampleData, sampleSize) != 0)
+    {
+        std::cerr << "LZW COMPRESSION ERROR! Data corrupted!\n";
+        successful = false;
+    }
+
+    if (successful)
+    {
+        std::cout << "LZW compression successful!\n";
+    }
+
+    // easyEncode() uses LZW_MALLOC (std::malloc).
+    LZW_MFREE(compressedData);
+}
+
+static void Test_LZW()
+{
+    std::cout << "> Testing random512...\n";
+    Test_LZW_EncodeDecode(random512, sizeof(random512));
+
+    std::cout << "> Testing strings...\n";
+    Test_LZW_EncodeDecode(str0, sizeof(str0));
+    Test_LZW_EncodeDecode(str1, sizeof(str1));
+    Test_LZW_EncodeDecode(str2, sizeof(str2));
+    Test_LZW_EncodeDecode(str3, sizeof(str3));
+
+    std::cout << "> Testing lenna.tga...\n";
+    Test_LZW_EncodeDecode(lennaTgaData, sizeof(lennaTgaData));
 }
 
 // ========================================================
@@ -156,15 +226,23 @@ static void Test_Huffman_EncodeDecode(const huffman::UByte * sampleData, const i
     std::cout << "Huffman uncompressed size bytes = " << sampleSize << "\n";
 
     // Restore:
-    huffman::easyDecode(compressedData, compressedSizeBytes, compressedSizeBits,
-                        uncompressedBuffer.data(), uncompressedBuffer.size());
+    const int uncompressedSize = huffman::easyDecode(compressedData, compressedSizeBytes, compressedSizeBits,
+                                                     uncompressedBuffer.data(), uncompressedBuffer.size());
 
     // Validate:
+    bool successful = true;
+    if (uncompressedSize != sampleSize)
+    {
+        std::cerr << "HUFFMAN COMPRESSION ERROR! Size mismatch!\n";
+        successful = false;
+    }
     if (std::memcmp(uncompressedBuffer.data(), sampleData, sampleSize) != 0)
     {
         std::cerr << "HUFFMAN COMPRESSION ERROR! Data corrupted!\n";
+        successful = false;
     }
-    else
+
+    if (successful)
     {
         std::cout << "Huffman compression successful!\n";
     }
@@ -192,17 +270,23 @@ static void Test_Huffman()
 // main() -- Unit tests driver:
 // ========================================================
 
-#define TEST(func)                                 \
-    do                                             \
-    {                                              \
-        std::cout << ">>> Test " << #func << "\n"; \
-        Test_##func();                             \
-        std::cout << std::endl;                    \
-    } while (0)
+#define TEST(func)                                                                                         \
+    do                                                                                                     \
+    {                                                                                                      \
+        std::cout << ">>> Testing " << #func << " encoding/decoding.\n";                                   \
+        const auto startTime = std::chrono::system_clock::now();                                           \
+        Test_##func();                                                                                     \
+        const auto endTime = std::chrono::system_clock::now();                                             \
+        std::chrono::duration<double> elapsedSeconds = endTime - startTime;                                \
+        std::cout << ">>> " << #func << " tests completed in " << elapsedSeconds.count() << " seconds.\n"; \
+        std::cout << std::endl;                                                                            \
+    }                                                                                                      \
+    while (0)
 
 int main()
 {
     std::cout << "\nRunning unit tests for the compression algorithms...\n\n";
     TEST(RLE);
+    TEST(LZW);
     TEST(Huffman);
 }

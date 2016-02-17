@@ -10,7 +10,6 @@
 #ifndef RLE_HPP
 #define RLE_HPP
 
-//
 // ---------
 //  LICENSE
 // ---------

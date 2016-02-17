@@ -109,7 +109,7 @@
 
 // If you provide a custom malloc(), you must also provide a custom free().
 // Note: We never check HUFFMAN_MALLOC's return for null. A custom implementation
-// should just abort with a fatal error is the program runs out of memory.
+// should just abort with a fatal error if the program runs out of memory.
 #ifndef HUFFMAN_MALLOC
     #define HUFFMAN_MALLOC std::malloc
     #define HUFFMAN_MFREE  std::free
@@ -122,10 +122,6 @@
 
 namespace huffman
 {
-
-// ========================================================
-// Local helpers:
-// ========================================================
 
 using UByte  = std::uint8_t;
 using UInt16 = std::uint16_t;
