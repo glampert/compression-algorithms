@@ -26,30 +26,17 @@
 // #define RLE_IMPLEMENTATION in one source file before including
 // this file, then use rle.hpp as a normal header file elsewhere.
 //
+// RLE_WORD_SIZE_16 #define controls the size of the RLE word/count.
+// If not defined, use 8-bits count.
 
 #include <cstdint>
 
 namespace rle
 {
 
-// 16-bits run-length word allows for very long sequences,
-// but is also very inefficient if the run-lengths are generally
-// short. Byte-size words are used if this is not defined.
-//#define RLE_WORD_SIZE_16
-
-using UByte = std::uint8_t;
-
-#ifdef RLE_WORD_SIZE_16
-    using UWord = std::uint16_t;
-    constexpr UWord MaxRunLength = 0xFFFF; // Max run length: 65535 => 4 bytes.
-#else // !RLE_WORD_SIZE_16
-    using UWord = std::uint8_t;
-    constexpr UWord MaxRunLength = 0xFF;   // Max run length: 255 => 2 bytes.
-#endif // RLE_WORD_SIZE_16
-
 // RLE encode/decode raw bytes:
-int easyEncode(const UByte * input, int inSizeBytes, UByte * output, int outSizeBytes);
-int easyDecode(const UByte * input, int inSizeBytes, UByte * output, int outSizeBytes);
+int easyEncode(const std::uint8_t * input, int inSizeBytes, std::uint8_t * output, int outSizeBytes);
+int easyDecode(const std::uint8_t * input, int inSizeBytes, std::uint8_t * output, int outSizeBytes);
 
 } // namespace rle {}
 
@@ -68,8 +55,24 @@ int easyDecode(const UByte * input, int inSizeBytes, UByte * output, int outSize
 namespace rle
 {
 
+//
+// #define RLE_WORD_SIZE_16
+// 16-bits run-length word allows for very long sequences,
+// but is also very inefficient if the run-lengths are generally
+// short. Byte-size words are used if this is not defined.
+//
+#ifdef RLE_WORD_SIZE_16
+    using RleWord = std::uint16_t;
+    constexpr RleWord MaxRunLength = RleWord(0xFFFF); // Max run length: 65535 => 4 bytes.
+#else // !RLE_WORD_SIZE_16
+    using RleWord = std::uint8_t;
+    constexpr RleWord MaxRunLength = RleWord(0xFF);   // Max run length: 255 => 2 bytes.
+#endif // RLE_WORD_SIZE_16
+
+// ========================================================
+
 template<typename T>
-static int writeData(UByte *& output, const T val)
+static int writeData(std::uint8_t *& output, const T val)
 {
     *reinterpret_cast<T *>(output) = val;
     output += sizeof(T);
@@ -77,13 +80,15 @@ static int writeData(UByte *& output, const T val)
 }
 
 template<typename T>
-static void readData(const UByte *& input, T & val)
+static void readData(const std::uint8_t *& input, T & val)
 {
     val = *reinterpret_cast<const T *>(input);
     input += sizeof(T);
 }
 
-int easyEncode(const UByte * input, const int inSizeBytes, UByte * output, const int outSizeBytes)
+// ========================================================
+
+int easyEncode(const std::uint8_t * input, const int inSizeBytes, std::uint8_t * output, const int outSizeBytes)
 {
     if (input == nullptr || output == nullptr)
     {
@@ -95,17 +100,17 @@ int easyEncode(const UByte * input, const int inSizeBytes, UByte * output, const
     }
 
     int bytesWritten = 0;
-    UWord rleCount   = 0;
-    UByte rleByte    = *input;
+    RleWord rleCount = 0;
+    std::uint8_t rleByte = *input;
 
     for (int i = 0; i < inSizeBytes; ++i, ++rleCount)
     {
-        const UByte b = *input++;
+        const std::uint8_t b = *input++;
 
         // Output when we hit the end of a sequence or the max size of a RLE word:
         if (b != rleByte || rleCount == MaxRunLength)
         {
-            if ((bytesWritten + sizeof(UWord) + sizeof(UByte)) > static_cast<unsigned>(outSizeBytes))
+            if ((bytesWritten + sizeof(RleWord) + sizeof(std::uint8_t)) > static_cast<unsigned>(outSizeBytes))
             {
                 // Can't fit anymore data! Stop with an error.
                 return -1;
@@ -120,7 +125,7 @@ int easyEncode(const UByte * input, const int inSizeBytes, UByte * output, const
     // Residual count at the end:
     if (rleCount != 0)
     {
-        if ((bytesWritten + sizeof(UWord) + sizeof(UByte)) > static_cast<unsigned>(outSizeBytes))
+        if ((bytesWritten + sizeof(RleWord) + sizeof(std::uint8_t)) > static_cast<unsigned>(outSizeBytes))
         {
             return -1; // No more space! Output not complete.
         }
@@ -131,7 +136,9 @@ int easyEncode(const UByte * input, const int inSizeBytes, UByte * output, const
     return bytesWritten;
 }
 
-int easyDecode(const UByte * input, const int inSizeBytes, UByte * output, const int outSizeBytes)
+// ========================================================
+
+int easyDecode(const std::uint8_t * input, const int inSizeBytes, std::uint8_t * output, const int outSizeBytes)
 {
     if (input == nullptr || output == nullptr)
     {
@@ -143,8 +150,8 @@ int easyDecode(const UByte * input, const int inSizeBytes, UByte * output, const
     }
 
     int bytesWritten = 0;
-    UWord rleCount   = 0;
-    UByte rleByte    = 0;
+    RleWord rleCount = 0;
+    std::uint8_t rleByte = 0;
 
     for (int i = 0; i < inSizeBytes; i += sizeof(rleCount) + sizeof(rleByte))
     {

@@ -98,14 +98,17 @@
 //
 // Nice quick video tutorial on Huffman coding:
 //  https://youtu.be/apcCVfXfcqE
-//
 
 #include <cstdint>
 #include <cstdlib>
 #include <array>
 #include <queue>
-#include <string>
 #include <vector>
+
+// Disable the bit stream => std::string dumping methods.
+#ifndef HUFFMAN_NO_STD_STRING
+    #include <string>
+#endif // HUFFMAN_NO_STD_STRING
 
 // If you provide a custom malloc(), you must also provide a custom free().
 // Note: We never check HUFFMAN_MALLOC's return for null. A custom implementation
@@ -115,21 +118,17 @@
     #define HUFFMAN_MFREE  std::free
 #endif // HUFFMAN_MALLOC
 
-// The default fatalError() function writes to stderr and aborts.
-#ifndef HUFFMAN_ERROR
-    #define HUFFMAN_ERROR(message) huffman::fatalError(message)
-#endif // HUFFMAN_ERROR
-
 namespace huffman
 {
 
-using UByte  = std::uint8_t;
-using UInt16 = std::uint16_t;
-using UInt32 = std::uint32_t;
-using UInt64 = std::uint64_t;
+// ========================================================
 
-// Default error handler for HUFFMAN_ERROR().
-void fatalError(const char * message);
+// The default fatalError() function writes to stderr and aborts.
+#ifndef HUFFMAN_ERROR
+    void fatalError(const char * message);
+    #define HUFFMAN_USING_DEFAULT_ERROR_HANDLER
+    #define HUFFMAN_ERROR(message) ::huffman::fatalError(message)
+#endif // HUFFMAN_ERROR
 
 // ========================================================
 // class Code:
@@ -152,7 +151,7 @@ public:
         length = 0;
     }
 
-    void appendBit(const bool bit)
+    void appendBit(const int bit)
     {
         if (length == MaxBits)
         {
@@ -162,7 +161,7 @@ public:
 
         // Using one of the Stanford bit-hacks to set/clear the bit:
         // http://graphics.stanford.edu/~seander/bithacks.html#ConditionalSetOrClearBitsWithoutBranching
-        const UInt64 mask = UInt64(1) << length;
+        const std::uint64_t mask = std::uint64_t(1) << length;
         bits = (bits & ~mask) | (-bit & mask);
         ++length;
     }
@@ -175,12 +174,13 @@ public:
         }
     }
 
-    bool getBit(const int index) const
+    int getBit(const int index) const
     {
-        const UInt64 mask = UInt64(1) << index;
+        const std::uint64_t mask = std::uint64_t(1) << index;
         return !!(bits & mask);
     }
 
+    #ifndef HUFFMAN_NO_STD_STRING
     std::string toBitString() const // Useful for debugging.
     {
         std::string bitString;
@@ -190,20 +190,21 @@ public:
         }
         return bitString;
     }
+    #endif // HUFFMAN_NO_STD_STRING
 
     int getLength() const { return length; }
     void setLength(const int lenInBits) { length = lenInBits; }
 
-    UInt64 getAsU64() const { return bits; }
-    void setAsU64(const UInt64 num) { bits = num; }
+    std::uint64_t getAsU64() const { return bits; }
+    void setAsU64(const std::uint64_t num) { bits = num; }
 
     bool operator == (const Code other) const { return bits == other.bits && length == other.length; }
     bool operator != (const Code other) const { return !(*this == other); }
 
 private:
 
-    UInt64 bits; // The long word storing our code bits, from right to left.
-    int length;  // Bit position within the bits word to write next. Same as the current length in bits.
+    std::uint64_t bits; // The long word storing our code bits, from right to left.
+    int length;         // Bit position within the bits word to write next. Same as the current length in bits.
 };
 
 // ========================================================
@@ -223,31 +224,34 @@ public:
 
     void allocate(int bitsWanted);
     void setGranularity(int growthGranularity);
-    std::string toBitString() const; // Useful for debugging.
-    UByte * release();
+    std::uint8_t * release();
 
-    void appendBit(bool bit);
-    void appendBitsU64(UInt64 num, int bitCount);
-    void appendBitString(const std::string & bitStr);
+    void appendBit(int bit);
+    void appendBitsU64(std::uint64_t num, int bitCount);
     void appendCode(Code code);
+
+    #ifndef HUFFMAN_NO_STD_STRING
+    std::string toBitString() const; // Useful for debugging.
+    void appendBitString(const std::string & bitStr);
+    #endif // HUFFMAN_NO_STD_STRING
 
     int getByteCount() const;
     int getBitCount()  const;
-    const UByte * getBitStream() const;
+    const std::uint8_t * getBitStream() const;
 
     ~BitStreamWriter();
 
 private:
 
     void internalInit();
-    static UByte * allocBytes(int bytesWanted, UByte * oldPtr, int oldSize);
+    static std::uint8_t * allocBytes(int bytesWanted, std::uint8_t * oldPtr, int oldSize);
 
-    UByte * stream;     // Growable buffer to store our bits. Heap allocated & owned by the class instance.
-    int bytesAllocated; // Current size of heap-allocated stream buffer *in bytes*.
-    int granularity;    // Amount bytesAllocated multiplies by when auto-resizing in appendBit().
-    int currBytePos;    // Current byte being written to, from 0 to bytesAllocated-1.
-    int nextBitPos;     // Bit position within the current byte to access next. 0 to 7.
-    int numBitsWritten; // Number of bits in use from the stream buffer, not including byte-rounding padding.
+    std::uint8_t * stream; // Growable buffer to store our bits. Heap allocated & owned by the class instance.
+    int bytesAllocated;    // Current size of heap-allocated stream buffer *in bytes*.
+    int granularity;       // Amount bytesAllocated multiplies by when auto-resizing in appendBit().
+    int currBytePos;       // Current byte being written to, from 0 to bytesAllocated-1.
+    int nextBitPos;        // Bit position within the current byte to access next. 0 to 7.
+    int numBitsWritten;    // Number of bits in use from the stream buffer, not including byte-rounding padding.
 };
 
 // ========================================================
@@ -263,16 +267,16 @@ public:
     BitStreamReader & operator = (const BitStreamReader &) = delete;
 
     BitStreamReader(const BitStreamWriter & bitStreamWriter);
-    BitStreamReader(const UByte * bitStream, int byteCount, int bitCount);
+    BitStreamReader(const std::uint8_t * bitStream, int byteCount, int bitCount);
 
     void reset();
     bool readNextBit();
-    UInt64 readBitsU64(int bitCount);
+    std::uint64_t readBitsU64(int bitCount);
 
     // Basic stream info:
     int getByteCount() const { return sizeInBytes; }
     int getBitCount()  const { return sizeInBits;  }
-    const UByte * getBitStream() const { return stream; }
+    const std::uint8_t * getBitStream() const { return stream; }
 
     // Current Huffman code being read from the stream:
     void clearCode() { currCode.clear(); }
@@ -281,13 +285,13 @@ public:
 
 private:
 
-    const UByte * stream;  // Pointer to the external bit stream. Not owned by the reader.
-    const int sizeInBytes; // Size of the stream *in bytes*. Might include padding.
-    const int sizeInBits;  // Size of the stream *in bits*, padding *not* include.
-    int currBytePos;       // Current byte being read in the stream.
-    int nextBitPos;        // Bit position within the current byte to access next. 0 to 7.
-    int numBitsRead;       // Total bits read from the stream so far. Never includes byte-rounding padding.
-    Code currCode;         // Current Huffman code being built from the input bit stream.
+    const std::uint8_t * stream; // Pointer to the external bit stream. Not owned by the reader.
+    const int sizeInBytes;       // Size of the stream *in bytes*. Might include padding.
+    const int sizeInBits;        // Size of the stream *in bits*, padding *not* include.
+    int currBytePos;             // Current byte being read in the stream.
+    int nextBitPos;              // Bit position within the current byte to access next. 0 to 7.
+    int numBitsRead;             // Total bits read from the stream so far. Never includes byte-rounding padding.
+    Code currCode;               // Current Huffman code being built from the input bit stream.
 };
 
 // ========================================================
@@ -325,7 +329,7 @@ public:
     // Constructor will start the encoding process,
     // building the Huffman tree and creating the output stream.
     // Call getBitStreamWriter() to fetch the results.
-    Encoder(const UByte * data, int dataSizeBytes, bool prependTreeToBitStream);
+    Encoder(const std::uint8_t * data, int dataSizeBytes, bool prependTreeToBitStream);
 
     // Find node can be used by a decoder to reconstruct
     // the original data from a bit stream of Huffman codes.
@@ -360,9 +364,9 @@ private:
     // Internal helpers:
     void buildHuffmanTree();
     void writeTreeBitStream();
-    void writeDataBitStream(const UByte * data, int dataSizeBytes);
-    void countFrequencies(const UByte * data, int dataSizeBytes);
-    void recursiveAssignCodes(Node * node, const Node * parent, bool bit);
+    void writeDataBitStream(const std::uint8_t * data, int dataSizeBytes);
+    void countFrequencies(const std::uint8_t * data, int dataSizeBytes);
+    void recursiveAssignCodes(Node * node, const Node * parent, int bit);
     const Node * recursiveFindLeaf(const Node * node, Code code) const;
     Node * addInnerNode(int frequency, int child0, int child1);
 
@@ -392,12 +396,12 @@ public:
 
     // Start the decoder from a bit stream:
     explicit Decoder(const BitStreamWriter & encodedBitStream);
-    Decoder(const UByte * encodedData, int encodedSizeBytes, int encodedSizeBits);
+    Decoder(const std::uint8_t * encodedData, int encodedSizeBytes, int encodedSizeBits);
 
     // Runs the decoding loop, writing to the user buffer.
     // Returns the number of *bytes* decoded, which might differ
     // from dataSizeBytes if there is an error or size mismatch.
-    int decode(UByte * data, int dataSizeBytes);
+    int decode(std::uint8_t * data, int dataSizeBytes);
 
 private:
 
@@ -422,15 +426,15 @@ private:
 // Quick Huffman data compression.
 // Output compressed data is heap allocated with HUFFMAN_MALLOC()
 // and should be later freed with HUFFMAN_MFREE().
-void easyEncode(const UByte * uncompressed, int uncompressedSizeBytes,
-                UByte ** compressed, int * compressedSizeBytes, int * compressedSizeBits);
+void easyEncode(const std::uint8_t * uncompressed, int uncompressedSizeBytes,
+                std::uint8_t ** compressed, int * compressedSizeBytes, int * compressedSizeBits);
 
 // Decompress back the output of easyEncode().
 // The uncompressed output buffer is assumed to be big enough to hold the uncompressed data,
 // if it happens to be smaller, the decoder will return a partial output and the return value
 // of this function will be less than uncompressedSizeBytes.
-int easyDecode(const UByte * compressed, int compressedSizeBytes, int compressedSizeBits,
-               UByte * uncompressed, int uncompressedSizeBytes);
+int easyDecode(const std::uint8_t * compressed, int compressedSizeBytes, int compressedSizeBits,
+               std::uint8_t * uncompressed, int uncompressedSizeBytes);
 
 } // namespace huffman {}
 
@@ -446,7 +450,10 @@ int easyDecode(const UByte * compressed, int compressedSizeBytes, int compressed
 
 #ifdef HUFFMAN_IMPLEMENTATION
 
-#include <iostream>
+#ifdef HUFFMAN_USING_DEFAULT_ERROR_HANDLER
+    #include <cstdio> // For the default error handler
+#endif // HUFFMAN_USING_DEFAULT_ERROR_HANDLER
+
 #include <cassert>
 #include <cstring>
 
@@ -468,6 +475,8 @@ static int nextPowerOfTwo(int num)
     return ++num;
 }
 
+// ========================================================
+
 // Count the minimum number of bits required to
 // represent the integer 'num', AKA its log2.
 static int bitsForInteger(int num)
@@ -481,15 +490,21 @@ static int bitsForInteger(int num)
     return bits;
 }
 
+// ========================================================
+
+#ifdef HUFFMAN_USING_DEFAULT_ERROR_HANDLER
+
 // Prints a fatal error to stderr and aborts the process.
 // This is the default method used by HUFFMAN_ERROR(), but
 // you can override the macro to use other error handling
 // mechanisms, such as C++ exceptions.
-void fatalError(const char * message)
+void fatalError(const char * const message)
 {
-    std::cerr << "Huffman encoder/decoder error: " << message << std::endl;
+    std::fprintf(stderr, "Huffman encoder/decoder error: %s\n", message);
     std::abort();
 }
+
+#endif // HUFFMAN_USING_DEFAULT_ERROR_HANDLER
 
 // ========================================================
 // class BitStreamWriter:
@@ -553,9 +568,9 @@ void BitStreamWriter::allocate(int bitsWanted)
     bytesAllocated = sizeInBytes;
 }
 
-void BitStreamWriter::appendBit(const bool bit)
+void BitStreamWriter::appendBit(const int bit)
 {
-    const UInt32 mask = UInt32(1) << nextBitPos;
+    const std::uint32_t mask = std::uint32_t(1) << nextBitPos;
     stream[currBytePos] = (stream[currBytePos] & ~mask) | (-bit & mask);
     ++numBitsWritten;
 
@@ -569,13 +584,13 @@ void BitStreamWriter::appendBit(const bool bit)
     }
 }
 
-void BitStreamWriter::appendBitsU64(const UInt64 num, const int bitCount)
+void BitStreamWriter::appendBitsU64(const std::uint64_t num, const int bitCount)
 {
     assert(bitCount <= 64);
     for (int b = 0; b < bitCount; ++b)
     {
-        const UInt64 mask = UInt64(1) << b;
-        const bool bit = !!(num & mask);
+        const std::uint64_t mask = std::uint64_t(1) << b;
+        const int bit = !!(num & mask);
         appendBit(bit);
     }
 }
@@ -587,6 +602,8 @@ void BitStreamWriter::appendCode(const Code code)
         appendBit(code.getBit(b));
     }
 }
+
+#ifndef HUFFMAN_NO_STD_STRING
 
 void BitStreamWriter::appendBitString(const std::string & bitStr)
 {
@@ -620,9 +637,11 @@ std::string BitStreamWriter::toBitString() const
     return bitString;
 }
 
-UByte * BitStreamWriter::release()
+#endif // HUFFMAN_NO_STD_STRING
+
+std::uint8_t * BitStreamWriter::release()
 {
-    UByte * oldPtr = stream;
+    std::uint8_t * oldPtr = stream;
     internalInit();
     return oldPtr;
 }
@@ -649,14 +668,14 @@ int BitStreamWriter::getBitCount() const
     return numBitsWritten;
 }
 
-const UByte * BitStreamWriter::getBitStream() const
+const std::uint8_t * BitStreamWriter::getBitStream() const
 {
     return stream;
 }
 
-UByte * BitStreamWriter::allocBytes(const int bytesWanted, UByte * oldPtr, const int oldSize)
+std::uint8_t * BitStreamWriter::allocBytes(const int bytesWanted, std::uint8_t * oldPtr, const int oldSize)
 {
-    UByte * newMemory = reinterpret_cast<UByte *>(HUFFMAN_MALLOC(bytesWanted));
+    std::uint8_t * newMemory = static_cast<std::uint8_t *>(HUFFMAN_MALLOC(bytesWanted));
     std::memset(newMemory, 0, bytesWanted);
 
     if (oldPtr != nullptr)
@@ -680,7 +699,7 @@ BitStreamReader::BitStreamReader(const BitStreamWriter & bitStreamWriter)
     reset();
 }
 
-BitStreamReader::BitStreamReader(const UByte * bitStream, const int byteCount, const int bitCount)
+BitStreamReader::BitStreamReader(const std::uint8_t * bitStream, const int byteCount, const int bitCount)
     : stream(bitStream)
     , sizeInBytes(byteCount)
     , sizeInBits(bitCount)
@@ -695,8 +714,8 @@ bool BitStreamReader::readNextBit()
         return false; // We are done.
     }
 
-    const UInt32 mask = UInt32(1) << nextBitPos;
-    const bool bit = !!(stream[currBytePos] & mask);
+    const std::uint32_t mask = std::uint32_t(1) << nextBitPos;
+    const int bit = !!(stream[currBytePos] & mask);
     ++numBitsRead;
 
     if (++nextBitPos == 8)
@@ -709,7 +728,7 @@ bool BitStreamReader::readNextBit()
     return true;
 }
 
-UInt64 BitStreamReader::readBitsU64(const int bitCount)
+std::uint64_t BitStreamReader::readBitsU64(const int bitCount)
 {
     assert(bitCount <= 64);
 
@@ -739,7 +758,7 @@ void BitStreamReader::reset()
 // class Encoder:
 // ========================================================
 
-Encoder::Encoder(const UByte * data, const int dataSizeBytes, const bool prependTreeToBitStream)
+Encoder::Encoder(const std::uint8_t * data, const int dataSizeBytes, const bool prependTreeToBitStream)
     : treeRoot(nullptr)
     , treePrefixBits(0)
 {
@@ -816,7 +835,7 @@ Node * Encoder::addInnerNode(const int frequency, const int leftChild, const int
     return &nodes[MaxNodes - 1];
 }
 
-void Encoder::recursiveAssignCodes(Node * node, const Node * parent, const bool bit)
+void Encoder::recursiveAssignCodes(Node * node, const Node * parent, const int bit)
 {
     // Inherit the parent code if not the root:
     if (parent != nullptr)
@@ -840,7 +859,7 @@ void Encoder::recursiveAssignCodes(Node * node, const Node * parent, const bool 
     }
 }
 
-void Encoder::countFrequencies(const UByte * data, int dataSizeBytes)
+void Encoder::countFrequencies(const std::uint8_t * data, int dataSizeBytes)
 {
     for (; dataSizeBytes > 0; --dataSizeBytes, ++data)
     {
@@ -860,7 +879,7 @@ void Encoder::countFrequencies(const UByte * data, int dataSizeBytes)
     }
 }
 
-void Encoder::writeDataBitStream(const UByte * data, int dataSizeBytes)
+void Encoder::writeDataBitStream(const std::uint8_t * data, int dataSizeBytes)
 {
     for (; dataSizeBytes > 0; --dataSizeBytes, ++data)
     {
@@ -906,7 +925,7 @@ void Encoder::writeTreeBitStream()
         }
     }
 
-    // Code length is currently limited to UInt64!
+    // Code length is currently limited to uint64!
     if (maxCodeLengthInBits <= 0 || maxCodeLengthInBits > Code::MaxBits)
     {
         HUFFMAN_ERROR("Unexpected code length! Should be <= Code::MaxBits.");
@@ -928,7 +947,7 @@ void Encoder::writeTreeBitStream()
         bitStream.appendBitsU64(codeLen, codeLengthWidth);
 
         // Write the code bits themselves, using a varying bit-width:
-        const UInt64 codeNum = nodes[s].code.getAsU64();
+        const std::uint64_t codeNum = nodes[s].code.getAsU64();
         bitStream.appendBitsU64(codeNum, codeLen);
 
         // Keep track of the number of bits written so far for later padding.
@@ -1001,7 +1020,7 @@ Decoder::Decoder(const BitStreamWriter & encodedBitStream)
     readPrefixData();
 }
 
-Decoder::Decoder(const UByte * encodedData, const int encodedSizeBytes, const int encodedSizeBits)
+Decoder::Decoder(const std::uint8_t * encodedData, const int encodedSizeBytes, const int encodedSizeBits)
     : bitStream(encodedData, encodedSizeBytes, encodedSizeBits)
 {
     readPrefixData();
@@ -1012,8 +1031,8 @@ void Decoder::readPrefixData()
     // First two 16-bits words in the stream are
     // the number of codes, which must be 256, and
     // the width in bits of each code_length field.
-    const UInt64 numberOfCodes   = bitStream.readBitsU64(16);
-    const UInt64 codeLengthWidth = bitStream.readBitsU64(16);
+    const std::uint64_t numberOfCodes   = bitStream.readBitsU64(16);
+    const std::uint64_t codeLengthWidth = bitStream.readBitsU64(16);
     int treePrefixBits = 32; // The 16 bits read above.
 
     if (numberOfCodes != MaxSymbols)
@@ -1023,13 +1042,13 @@ void Decoder::readPrefixData()
     }
 
     // 256/MaxSymbols codes follow:
-    for (UInt64 c = 0; c < numberOfCodes; ++c)
+    for (std::uint64_t c = 0; c < numberOfCodes; ++c)
     {
         //
         // Read the code_length field, fixed bit-width:
         //
         bitStream.clearCode();
-        for (UInt64 l = 0; l < codeLengthWidth; ++l)
+        for (std::uint64_t l = 0; l < codeLengthWidth; ++l)
         {
             if (!bitStream.readNextBit())
             {
@@ -1038,14 +1057,14 @@ void Decoder::readPrefixData()
             }
         }
         treePrefixBits += codeLengthWidth;
-        const UInt64 codeBitsWidth = bitStream.getCode().getAsU64();
+        const std::uint64_t codeBitsWidth = bitStream.getCode().getAsU64();
         assert(codeBitsWidth <= Code::MaxBits);
 
         //
         // Now read the code bits using the just acquired length:
         //
         bitStream.clearCode();
-        for (UInt64 l = 0; l < codeBitsWidth; ++l)
+        for (std::uint64_t l = 0; l < codeBitsWidth; ++l)
         {
             if (!bitStream.readNextBit())
             {
@@ -1081,7 +1100,7 @@ int Decoder::findMatchingCode(const Code code) const
     return Nil; // Not found.
 }
 
-int Decoder::decode(UByte * data, const int dataSizeBytes)
+int Decoder::decode(std::uint8_t * data, const int dataSizeBytes)
 {
     assert(data != nullptr);
     assert(dataSizeBytes != 0);
@@ -1102,7 +1121,7 @@ int Decoder::decode(UByte * data, const int dataSizeBytes)
             break;
         }
 
-        *data++ = static_cast<UByte>(codeIndex);
+        *data++ = static_cast<std::uint8_t>(codeIndex);
         ++bytesDecoded;
 
         bitStream.clearCode();
@@ -1115,8 +1134,8 @@ int Decoder::decode(UByte * data, const int dataSizeBytes)
 // easyEncode() implementation:
 // ========================================================
 
-void easyEncode(const UByte * uncompressed, const int uncompressedSizeBytes,
-                UByte ** compressed, int * compressedSizeBytes, int * compressedSizeBits)
+void easyEncode(const std::uint8_t * uncompressed, const int uncompressedSizeBytes,
+                std::uint8_t ** compressed, int * compressedSizeBytes, int * compressedSizeBits)
 {
     if (uncompressed == nullptr || compressed == nullptr)
     {
@@ -1143,8 +1162,8 @@ void easyEncode(const UByte * uncompressed, const int uncompressedSizeBytes,
 // easyDecode() implementation:
 // ========================================================
 
-int easyDecode(const UByte * compressed, const int compressedSizeBytes, const int compressedSizeBits,
-               UByte * uncompressed, const int uncompressedSizeBytes)
+int easyDecode(const std::uint8_t * compressed, const int compressedSizeBytes, const int compressedSizeBits,
+               std::uint8_t * uncompressed, const int uncompressedSizeBytes)
 {
     if (compressed == nullptr || uncompressed == nullptr)
     {
